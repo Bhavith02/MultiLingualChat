@@ -102,8 +102,8 @@ export class TranslationService {
    */
   async getSupportedLanguages(): Promise<string[]> {
     try {
-      const [languages] = await translate.getLanguages();
-      return languages.map((lang) => lang.code);
+      const [languages] = await this.translate.getLanguages();
+      return languages.map((lang: any) => lang.code);
     } catch (error) {
       logger.error('Failed to get supported languages', { error });
       

@@ -12,10 +12,6 @@ const updateUserSchema = z.object({
   avatarUrl: z.string().url().optional().nullable(),
 });
 
-const searchUsersSchema = z.object({
-  query: z.string().min(1).max(100),
-});
-
 // Get current user profile
 export const getMe = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -100,7 +96,6 @@ export const searchUsers = async (req: Request, res: Response, next: NextFunctio
     }
 
     const searchQuery = req.query.q as string;
-    const searchQueryLower = searchQuery.toLowerCase();
 
     console.log('Search query:', searchQuery, 'User ID:', userId);
 
