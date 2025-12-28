@@ -17,6 +17,8 @@ interface SocketMessage {
     text: string;
     is_original: boolean;
     original_text: string;
+    original_lang?: string;
+    romanization?: string;
     message_type: string;
     created_at: string;
     target_language?: string;
