@@ -99,15 +99,16 @@ export class TranslationService {
 
   /**
    * Check if language code is supported
+   * Note: Currently using MyMemory API which doesn't require language list
    */
   async getSupportedLanguages(): Promise<string[]> {
-    try {
-      const [languages] = await this.translate.getLanguages();
-      return languages.map((lang: any) => lang.code);
-    } catch (error) {
-      logger.error('Failed to get supported languages', { error });
-      
-      // Return common languages as fallback
+    // MyMemory API supports most languages automatically
+    // Return common languages as fallback
+    return [
+      'en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh',
+      'ar', 'hi', 'bn', 'pa', 'te', 'mr', 'ta', 'ur', 'gu', 'kn',
+      'ml', 'si', 'th', 'vi', 'id', 'ms', 'tl', 'nl', 'pl', 'tr'
+    ];
       return ['en', 'es', 'fr', 'de', 'zh', 'ja', 'ko', 'ar', 'hi', 'pt', 'ru', 'it'];
     }
   }
