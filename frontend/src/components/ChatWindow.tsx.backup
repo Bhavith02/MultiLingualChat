@@ -1,0 +1,396 @@
+import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+  Box,
+  Paper,
+  Typography,
+  TextField,
+  IconButton,
+  Avatar,
+  Chip,
+  Tooltip,
+  Switch,
+  FormControlLabel,
+} from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
+import TranslateIcon from '@mui/icons-material/Translate';
+import SchoolIcon from '@mui/icons-material/School';
+import { useStore } from '../store';
+import { websocketService } from '../services/websocket';
+import { chatAPI } from '../services/api';
+import type { Message } from '../types';
+import { formatDistanceToNow } from 'date-fns';
+
+export default function ChatWindow() {
+  const { roomId } = useParams<{ roomId: string }>();
+  const { 
+    user, 
+    chatRooms, 
+    messages, 
+    setActiveRoom, 
+    setMessages, 
+    typingUsers,
+    languageLearningMode,
+    toggleLanguageLearningMode,
+  } = useStore();
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
+
+  const room = chatRooms.find((r) => r.id === Number(roomId));
+  const roomMessages = messages[Number(roomId!) || 0] || [];
+  const currentRoomTypingUsers = typingUsers[Number(roomId!) || 0] || [];
+
+  useEffect(() => {
+    setActiveRoom(Number(roomId));
+    
+    // Load messages from API
+    if (roomId) {
+      chatAPI.getMessages(Number(roomId))
+        .then((response) => {
+          if (response.success && response.data.messages) {
+            const formattedMessages: Message[] = response.data.messages.map((msg: any) => ({
+              id: msg.id,
+              senderId: msg.senderId || msg.sender_id,
+              senderName: msg.sender?.displayName || msg.sender?.username || 'Unknown',
+              senderAvatar: msg.sender?.avatarUrl,
+              text: msg.translatedText || msg.originalText || msg.text,
+              originalText: msg.originalText,
+              isOriginal: msg.originalLang === user?.preferredLang,
+              timestamp: msg.createdAt || msg.created_at,
+            }));
+            setMessages(Number(roomId), formattedMessages);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load messages:', error);
+        });
+    }
+    
+    return () => setActiveRoom(null);
+  }, [roomId, setActiveRoom, setMessages, user?.preferredLang]);
+
+  useEffect(() => {
+    // Scroll to bottom when messages change
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [roomMessages]);
+
+  const handleSend = () => {
+    if (!inputText.trim() || !roomId) return;
+
+    // Send via WebSocket
+    websocketService.sendMessage(Number(roomId), inputText);
+    
+    // Stop typing indicator
+    if (isTyping) {
+      websocketService.stopTyping(Number(roomId));
+      setIsTyping(false);
+    }
+    
+    setInputText('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value);
+    
+    // Handle typing indicator
+    if (!isTyping && roomId) {
+      websocketService.startTyping(Number(roomId));
+      setIsTyping(true);
+    }
+    
+    // Clear previous timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Stop typing after 2 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      if (roomId) {
+        websocketService.stopTyping(Number(roomId));
+        setIsTyping(false);
+      }
+    }, 2000);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  if (!room) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+        }}
+      >
+        <Typography color="text.secondary">Select a chat to start messaging</Typography>
+      </Box>
+    );
+  }
+
+  const getDisplayName = () => {
+    if (room.name) return room.name;
+    const otherUser = room.participants.find((p) => p.id !== user?.id);
+    return otherUser?.displayName || 'Unknown';
+  };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Chat Header */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2.5,
+          borderRadius: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          bgcolor: 'white',
+          borderBottom: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar sx={{
+            bgcolor: 'primary.main',
+            width: 44,
+            height: 44,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+          }}>
+            {getDisplayName()[0]}
+          </Avatar>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#2d3748' }}>{getDisplayName()}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+              {room.type === 'group'
+                ? `${room.participants.length} members`
+                : room.participants.find((p) => p.id !== user?.id)?.isOnline
+                ? '🟢 Online'
+                : 'Offline'}
+            </Typography>
+          </Box>
+        </Box>
+        
+        <Tooltip title="Language Learning Mode - Show both original and translated messages">
+          <FormControlLabel
+            control={
+              <Switch
+                checked={languageLearningMode}
+                onChange={toggleLanguageLearningMode}
+                icon={<SchoolIcon />}
+                checkedIcon={<SchoolIcon />}
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <SchoolIcon fontSize="small" />
+                <Typography variant="caption">Learn Mode</Typography>
+              </Box>
+            }
+          />
+        </Tooltip
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#2d3748' }}>{getDisplayName()}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+            {room.type === 'group'
+              ? `${room.participants.length} members`
+              : room.participants.find((p) => p.id !== user?.id)?.isOnline
+              ? '🟢 Online'
+              : 'Offline'}
+          </Typography>
+        </Box>
+      </Paper>
+
+      {/* Messages Area */}
+      <Box
+        sx={{
+          flexGrow: 1,
+          overflow: 'auto',
+          p: 3,
+          bgcolor: '#f5f7fa',
+          backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(0,0,0,0.02) 1px, transparent 0)',
+          backgroundSize: '40px 40px',
+        }}
+      >
+        {roomMessages.map((message) => {
+          const isOwn = message.senderId === user?.id;
+          return (
+            <Box
+              key={message.id}
+              sx={{
+                display: 'flex',
+                justifyContent: isOwn ? 'flex-end' : 'flex-start',
+                mb
+                  {/* Language Learning Mode - Show both original and translation */}
+                  {languageLearningMode && message.originalText && message.originalText !== message.text && (
+                    <Box
+                      sx={{
+                        mt: 1.5,
+                        pt: 1.5,
+                        borderTop: '1px solid',
+                        borderColor: isOwn ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                        <TranslateIcon sx={{ fontSize: 14, opacity: 0.7 }} />
+                        <Typography variant="caption" sx={{ opacity: 0.7, fontWeight: 600 }}>
+                          Original ({message.originalLang?.toUpperCase()}):
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ opacity: 0.9, fontStyle: 'italic' }}>
+                        {message.originalText}
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  {/* Regular translation hint when NOT in learning mode */}
+                  {!languageLearningMode && message.originalText && message.originalText !== message.text && (
+                    <Tooltip title={`Original (${message.originalLang}): ${message.originalText}`}>
+                      <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'help' }}>
+                        <TranslateIcon sx={{ fontSize: 12, opacity: 0.7 }} />
+                        <Typography variant="caption" sx={{ opacity: 0.7, fontSize: '0.7rem' }}>
+                          Translated
+                        </Typography>
+                      </Box>
+                    </Tooltip>
+                  )}
+                  er
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    bgcolor: isOwn ? 'primary.main' : 'white',
+                    color: isOwn ? 'white' : 'text.primary',
+                    borderRadius: 3,
+                    boxShadow: isOwn ? '0 2px 8px rgba(102, 126, 234, 0.2)' : '0 2px 8px rgba(0,0,0,0.08)',
+                    background: isOwn ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'white',
+                  }}
+                >
+                  <Typography variant="body1">{message.text}</Typography>
+                  {message.originalText && message.originalText !== message.text && (
+                    <Tooltip title={`Original (${message.originalLang}): ${message.originalText}`}>
+                      <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'help' }}>
+                        <TranslateIcon sx={{ fontSize: 12, opacity: 0.7 }} />
+                        <Typography variant="caption" sx={{ opacity: 0.7, fontSize: '0.7rem' }}>
+                          Translated
+                        </Typography>
+                      </Box>
+                    </Tooltip>
+                  )}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: 'block',
+                      mt: 0.5,
+                      opacity: 0.7,
+                    }}
+                  >
+                    {formatDistanceToNow(new Date(message.timestamp), {
+                      addSuffix: true,
+                    })}
+                  </Typography>
+                </Paper>
+              </Box>
+            </Box>
+          );
+        })}
+        
+        {/* Typing indicator */}
+        {currentRoomTypingUsers.filter((id) => id !== user?.id).length > 0 && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 1.5,
+                bgcolor: 'white',
+                borderRadius: 3,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                Someone is typing...
+              </Typography>
+            </Paper>
+          </Box>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </Box>
+
+      {/* Input Area */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2.5,
+          borderRadius: 0,
+          display: 'flex',
+          gap: 1.5,
+          alignItems: 'flex-end',
+          bgcolor: 'white',
+          borderTop: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.05)',
+        }}
+      >
+        <Chip
+          icon={<TranslateIcon />}
+          label={user?.preferredLang.toUpperCase()}
+          size="small"
+          sx={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            fontWeight: 600,
+            '& .MuiChip-icon': { color: 'white' }
+          }}
+        />
+        <TextField
+          fullWidth
+          multiline
+          maxRows={4}
+          placeholder="Type a message..."
+          value={inputText}
+          onChange={handleInputChange}
+          onKeyPress={handleKeyPress}
+          variant="outlined"
+          size="small"
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 3,
+              bgcolor: '#f5f7fa',
+              '&:hover fieldset': {
+                borderColor: 'primary.main',
+              },
+              '&.Mui-focused fieldset': {
+                borderColor: 'primary.main',
+              },
+            },
+          }}
+        />
+        <IconButton
+          onClick={handleSend}
+          disabled={!inputText.trim()}
+          sx={{
+            background: !inputText.trim() ? 'grey.300' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              background: !inputText.trim() ? 'grey.300' : 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
+              transform: 'scale(1.05)',
+            },
+            '&:disabled': {
+              color: 'white',
+            }
+          }}
+        >
+          <SendIcon />
+        </IconButton>
+      </Paper>
+    </Box>
+  );
+}

@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int      @id @default(autoincrement())
+  username        String   @unique 
+  email           String   @unique 
+  passwordHash    String   @map("password_hash") 
+  preferredLang   String   @default("en") @map("preferred_language") 
+  displayName     String?  @map("display_name") 
+  avatarUrl       String?  @map("avatar_url") 
+  bio             String?  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastSeen        DateTime @default(now()) @map("last_seen")
+  isActive        Boolean  @default(true) @map("is_active")
+  isOnline        Boolean  @default(false) @map("is_online")
+
+  messages        Message[]
+  participants    RoomParticipant[]
+  createdRooms    ChatRoom[]        @relation("RoomCreator")
+
+  @@index([email])
+  @@index([username])
+  @@index([lastSeen])
+  @@map("users")
+}
+
+model ChatRoom {
+  id          Int      @id @default(autoincrement())
+  name        String?  
+  type        String    // 'direct' or 'group'
+  description String?  
+  avatarUrl   String?  @map("avatar_url") 
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  isActive    Boolean  @default(true) @map("is_active")
+
+  creator      User?             @relation("RoomCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  messages     Message[]
+  participants RoomParticipant[]
+
+  @@index([type])
+  @@index([createdBy])
+  @@map("chat_rooms")
+}
+
+model RoomParticipant {
+  id                Int       @id @default(autoincrement())
+  roomId            Int       @map("room_id")
+  userId            Int       @map("user_id")
+  role              String    @default("member")  // 'admin' or 'member'
+  joinedAt          DateTime  @default(now()) @map("joined_at")
+  leftAt            DateTime? @map("left_at")
+  isMuted           Boolean   @default(false) @map("is_muted")
+  lastReadMessageId Int?      @map("last_read_message_id")
+
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+  @@index([roomId, userId])
+  @@map("room_participants")
+}
+
+model Message {
+  id              Int       @id @default(autoincrement())
+  chatRoomId      Int       @map("chat_room_id")
+  senderId        Int?      @map("sender_id")
+  originalText    String    @map("original_text") 
+  originalLang    String    @map("original_language") 
+  messageType     String    @default("text") @map("message_type") 
+  attachmentUrl   String?   @map("attachment_url") 
+  replyToId       Int?      @map("reply_to_message_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  isEdited        Boolean   @default(false) @map("is_edited")
+  editedAt        DateTime? @map("edited_at")
+  isDeleted       Boolean   @default(false) @map("is_deleted")
+
+  chatRoom     ChatRoom              @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  sender       User?                 @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  replyTo      Message?              @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]             @relation("MessageReplies")
+  translations MessageTranslation[]
+
+  @@index([chatRoomId, createdAt(sort: Desc)])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model MessageTranslation {
+  id                 Int      @id @default(autoincrement())
+  messageId          Int      @map("message_id")
+  targetLanguage     String   @map("target_language") 
+  translatedText     String   @map("translated_text") 
+  translationProvider String  @default("google") @map("translation_provider") 
+  confidenceScore    Float?   @map("confidence_score")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, targetLanguage])
+  @@index([messageId])
+  @@index([targetLanguage])
+  @@map("message_translations")
+}
+
+model Language {
+  code        String   @id 
+  name        String   
+  nativeName  String?  @map("native_name") 
+  isSupported Boolean  @default(true) @map("is_supported")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("languages")
+}
