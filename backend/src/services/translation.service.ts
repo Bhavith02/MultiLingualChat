@@ -109,8 +109,6 @@ export class TranslationService {
       'ar', 'hi', 'bn', 'pa', 'te', 'mr', 'ta', 'ur', 'gu', 'kn',
       'ml', 'si', 'th', 'vi', 'id', 'ms', 'tl', 'nl', 'pl', 'tr'
     ];
-      return ['en', 'es', 'fr', 'de', 'zh', 'ja', 'ko', 'ar', 'hi', 'pt', 'ru', 'it'];
-    }
   }
 }
 
