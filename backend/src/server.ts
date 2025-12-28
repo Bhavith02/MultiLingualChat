@@ -19,11 +19,12 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 
-// Socket.IO setup
-const allowedOrigins = [
+// Socket.IO setup - Allow configured frontend URLs
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+const allowedOrigins = frontendUrl.split(',').map(url => url.trim()).concat([
   'http://localhost:5173',
   'http://10.63.34.160:5173',
-];
+]);
 
 const io = new Server(httpServer, {
   cors: {
