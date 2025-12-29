@@ -34,6 +34,9 @@ const io = new Server(httpServer, {
 });
 
 // Middleware
+// Trust proxy - required for Render/production deployments
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({
   origin: allowedOrigins,
