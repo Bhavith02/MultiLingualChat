@@ -87,17 +87,24 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
   try {
     const data = loginSchema.parse(req.body);
 
+    console.log('Login attempt for email:', data.email);
+
     // Find user
     const user = await prisma.user.findUnique({
       where: { email: data.email },
     });
 
     if (!user) {
+      console.log('User not found for email:', data.email);
       throw new AppError(401, 'UNAUTHORIZED', 'Invalid credentials');
     }
 
+    console.log('User found:', user.username, 'Hash exists:', !!user.passwordHash);
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(data.password, user.passwordHash);
+
+    console.log('Password valid:', isPasswordValid);
 
     if (!isPasswordValid) {
       throw new AppError(401, 'UNAUTHORIZED', 'Invalid credentials');
