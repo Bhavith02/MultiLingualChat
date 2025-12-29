@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import type { Message } from '../types';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
 
 interface SocketMessage {
   message: {
