@@ -38,18 +38,38 @@ interface SocketCallbacks {
 class WebSocketService {
   private socket: Socket | null = null;
   private callbacks: Partial<SocketCallbacks> = {};
+  private token: string | null = null;
+  private currentRooms: Set<number> = new Set();
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
 
   connect(token: string) {
+    this.token = token;
+    
     if (this.socket?.connected) {
       console.log('Socket already connected');
       return;
     }
+
+    // Disconnect existing socket if any
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+    }
+
+    console.log('🔌 Connecting to WebSocket:', SOCKET_URL);
 
     this.socket = io(SOCKET_URL, {
       auth: {
         token: `Bearer ${token}`,
       },
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: this.maxReconnectAttempts,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      forceNew: true,
     });
 
     this.setupEventListeners();
@@ -60,10 +80,41 @@ class WebSocketService {
 
     this.socket.on('connect', () => {
       console.log('✅ WebSocket connected:', this.socket?.id);
+      this.reconnectAttempts = 0;
+      
+      // Rejoin all rooms after reconnection
+      if (this.currentRooms.size > 0) {
+        console.log('🔄 Rejoining rooms after reconnection:', Array.from(this.currentRooms));
+        this.currentRooms.forEach(roomId => {
+          this.socket?.emit('join_room', { room_id: roomId });
+        });
+      }
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('❌ WebSocket disconnected');
+    this.socket.on('disconnect', (reason) => {
+      console.log('❌ WebSocket disconnected. Reason:', reason);
+      
+      if (reason === 'io server disconnect') {
+        // Server disconnected, need to reconnect manually
+        console.log('🔄 Server disconnected, attempting to reconnect...');
+        setTimeout(() => {
+          if (this.token && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            this.connect(this.token);
+          }
+        }, 2000);
+      }
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.error('❌ Connection error:', error.message);
+      this.reconnectAttempts++;
+      
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.callbacks.onError?.({
+          message: 'Failed to connect to server. Please refresh the page.',
+        });
+      }
     });
 
     this.socket.on('error', (data: { message: string }) => {
@@ -144,8 +195,10 @@ class WebSocketService {
   }
 
   joinRoom(roomId: number) {
+    this.currentRooms.add(roomId);
+    
     if (!this.socket?.connected) {
-      console.warn('Socket not connected');
+      console.warn('⚠️ Socket not connected, will join room after connection');
       return;
     }
     
@@ -154,6 +207,8 @@ class WebSocketService {
   }
 
   leaveRoom(roomId: number) {
+    this.currentRooms.delete(roomId);
+    
     if (!this.socket?.connected) return;
     
     console.log('🚪 Leaving room:', roomId);
@@ -162,7 +217,10 @@ class WebSocketService {
 
   sendMessage(roomId: number, text: string, messageType: string = 'text') {
     if (!this.socket?.connected) {
-      console.warn('Socket not connected');
+      console.error('❌ Cannot send message: Socket not connected');
+      this.callbacks.onError?.({
+        message: 'Not connected to server. Please check your connection.',
+      });
       return;
     }
 
@@ -198,9 +256,13 @@ class WebSocketService {
   disconnect() {
     if (this.socket) {
       console.log('🔌 Disconnecting socket');
+      this.socket.removeAllListeners();
       this.socket.disconnect();
       this.socket = null;
       this.callbacks = {};
+      this.currentRooms.clear();
+      this.token = null;
+      this.reconnectAttempts = 0;
     }
   }
 
