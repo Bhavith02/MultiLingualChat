@@ -19,6 +19,7 @@ import SendIcon from '@mui/icons-material/Send';
 import MicIcon from '@mui/icons-material/Mic';
 import TranslateIcon from '@mui/icons-material/Translate';
 import SchoolIcon from '@mui/icons-material/School';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import { useStore } from '../store';
 import { websocketService } from '../services/websocket';
 import { chatAPI, userAPI } from '../services/api';
@@ -44,6 +45,7 @@ export default function ChatWindow() {
   const [langMenuAnchor, setLangMenuAnchor] = useState<null | HTMLElement>(null);
   const [langSearchQuery, setLangSearchQuery] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [speakingMessageId, setSpeakingMessageId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -51,6 +53,61 @@ export default function ChatWindow() {
   const room = chatRooms.find((r) => r.id === Number(roomId));
   const roomMessages = messages[Number(roomId!) || 0] || [];
   const currentRoomTypingUsers = typingUsers[Number(roomId!) || 0] || [];
+
+  // Text-to-speech function
+  const speakText = (text: string, lang: string | undefined, messageId: number) => {
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    if (speakingMessageId === messageId) {
+      // If already speaking this message, stop it
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Map language codes to browser speech synthesis language codes
+    const langMap: Record<string, string> = {
+      'en': 'en-US',
+      'es': 'es-ES',
+      'fr': 'fr-FR',
+      'de': 'de-DE',
+      'it': 'it-IT',
+      'pt': 'pt-BR',
+      'ru': 'ru-RU',
+      'zh': 'zh-CN',
+      'ja': 'ja-JP',
+      'ko': 'ko-KR',
+      'ar': 'ar-SA',
+      'hi': 'hi-IN',
+      'bn': 'bn-IN',
+      'pa': 'pa-IN',
+      'te': 'te-IN',
+      'ta': 'ta-IN',
+      'mr': 'mr-IN',
+      'gu': 'gu-IN',
+      'kn': 'kn-IN',
+      'ml': 'ml-IN',
+    };
+
+    utterance.lang = lang ? (langMap[lang] || lang) : 'en-US';
+    utterance.rate = 0.9; // Slightly slower for better comprehension
+    
+    utterance.onstart = () => {
+      setSpeakingMessageId(messageId);
+    };
+    
+    utterance.onend = () => {
+      setSpeakingMessageId(null);
+    };
+    
+    utterance.onerror = () => {
+      setSpeakingMessageId(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     setActiveRoom(Number(roomId));
@@ -382,9 +439,24 @@ export default function ChatWindow() {
                               How to pronounce:
                             </Typography>
                           </Box>
-                          <Typography variant="body2" sx={{ opacity: 0.85, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
-                            {message.romanization}
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" sx={{ opacity: 0.85, fontFamily: 'monospace', letterSpacing: '0.5px', flex: 1 }}>
+                              {message.romanization}
+                            </Typography>
+                            <Tooltip title={speakingMessageId === message.id ? "Stop" : "Listen to pronunciation"}>
+                              <IconButton
+                                size="small"
+                                onClick={() => speakText(message.originalText || message.text, message.originalLang, message.id)}
+                                sx={{ 
+                                  color: isOwn ? 'white' : 'primary.main',
+                                  opacity: speakingMessageId === message.id ? 1 : 0.7,
+                                  '&:hover': { opacity: 1 }
+                                }}
+                              >
+                                <VolumeUpIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
                         </>
                       )}
                     </Box>
