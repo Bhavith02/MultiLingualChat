@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { User, ChatRoom, Message } from '../types';
 import { websocketService } from '../services/websocket';
+import { chatAPI } from '../services/api';
 
 interface AppStore {
   user: User | null;
@@ -142,7 +143,7 @@ export const useStore = create<AppStore>((set, get) => ({
     }),
 
   initializeWebSocket: () => {
-    const { token, addMessage, addTypingUser, removeTypingUser, setUnreadCount } = get();
+    const { token, addMessage, addTypingUser, removeTypingUser, setUnreadCount, setChatRooms } = get();
     
     if (!token) {
       console.warn('No token available for WebSocket connection');
@@ -153,6 +154,12 @@ export const useStore = create<AppStore>((set, get) => ({
     websocketService.setCallbacks({
       onMessage: (roomId, message) => {
         addMessage(roomId, message);
+        // Refresh chat rooms to update last message
+        chatAPI.getRooms().then((response) => {
+          if (response.success && response.data.rooms) {
+            setChatRooms(response.data.rooms);
+          }
+        }).catch((err) => console.error('Failed to refresh rooms:', err));
       },
       onTyping: ({ room_id, user_id }) => {
         addTypingUser(room_id, user_id);

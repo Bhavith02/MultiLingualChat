@@ -140,6 +140,7 @@ export const setupWebSocket = (io: Server) => {
           const participantSockets = userSockets.get(participant.user.id);
           if (participantSockets) {
             for (const socketId of participantSockets) {
+              // Send new message event
               io.to(socketId).emit('new_message', {
                 message: {
                   id: message.id,
@@ -153,6 +154,11 @@ export const setupWebSocket = (io: Server) => {
                   created_at: message.createdAt,
                   target_language: userLang,
                 },
+              });
+              
+              // Also send room update notification to refresh chat list
+              io.to(socketId).emit('room_updated', {
+                room_id: data.room_id,
               });
             }
           }
