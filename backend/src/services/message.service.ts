@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { translationService } from './translation.service.js';
+import { romanize } from '../utils/romanization.js';
 
 const prisma = new PrismaClient();
 
@@ -133,7 +134,7 @@ export class MessageService {
   async getMessageForUser(
     messageId: number,
     userLanguage: string
-  ): Promise<{ text: string; isOriginal: boolean }> {
+  ): Promise<{ text: string; isOriginal: boolean; romanization: string | null; originalLang: string }> {
     try {
       const message = await prisma.message.findUnique({
         where: { id: messageId },
@@ -148,11 +149,16 @@ export class MessageService {
         throw new Error('Message not found');
       }
 
+      // Generate romanization for the original text
+      const romanization = await romanize(message.originalText, message.originalLang);
+
       // If user's language matches original, return original
       if (message.originalLang === userLanguage) {
         return {
           text: message.originalText,
           isOriginal: true,
+          romanization,
+          originalLang: message.originalLang,
         };
       }
 
@@ -162,6 +168,8 @@ export class MessageService {
         return {
           text: translation.translatedText,
           isOriginal: false,
+          romanization,
+          originalLang: message.originalLang,
         };
       }
 
@@ -169,6 +177,8 @@ export class MessageService {
       return {
         text: message.originalText,
         isOriginal: true,
+        romanization,
+        originalLang: message.originalLang,
       };
     } catch (error) {
       logger.error('Failed to get message for user', { error, messageId, userLanguage });
