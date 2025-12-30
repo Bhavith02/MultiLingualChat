@@ -105,9 +105,9 @@ export const searchUsers = async (req: Request, res: Response, next: NextFunctio
           { id: { not: userId } }, // Exclude current user
           {
             OR: [
-              { username: { contains: searchQuery } },
-              { displayName: { contains: searchQuery } },
-              { email: { contains: searchQuery } },
+              { username: { contains: searchQuery, mode: 'insensitive' } },
+              { displayName: { contains: searchQuery, mode: 'insensitive' } },
+              { email: { contains: searchQuery, mode: 'insensitive' } },
             ],
           },
         ],
